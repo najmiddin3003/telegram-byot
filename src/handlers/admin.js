@@ -6,6 +6,8 @@ const config = require('../config');
 const { step } = require('../steps');
 const { mainMenu, cancelMenu, adminMenu, paymentModerationKb } = require('../keyboards');
 const { escapeHtml, statusLabel, userLabel, sleep } = require('../utils');
+const paymentService = require('../services/paymentService');
+const { confirmMatchedPayment } = require('../services/paymentConfirm');
 
 function register(bot) {
   const guard = (ctx) => config.isAdmin(ctx.from?.id);
@@ -158,6 +160,41 @@ function register(bot) {
     } catch { /* bloklagan */ }
   });
 
+  // --- Kartaga tushgan summani qo'lda tasdiqlash: /tolov <summa> ---
+  // To'lov agregatori (webhook) ulanmagan bo'lsa ham, admin kartaga
+  // tushgan aniq summani (2 xonali unikal kod bilan birga) shu buyruq
+  // orqali kiritsa — mos foydalanuvchi avtomatik topilib, hisobi
+  // to'ldiriladi yoki to'g'ridan-to'g'ri buyurtmasi yaratiladi.
+  bot.command('tolov', async (ctx) => {
+    if (!guard(ctx)) return;
+
+    const amount = Number(ctx.message.text.split(/\s+/)[1]);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return ctx.reply("Foydalanish: /tolov <summa>\nMasalan: /tolov 23034");
+    }
+
+    const payload = await paymentService.matchAndConsume(Math.round(amount));
+    if (!payload) {
+      return ctx.reply(
+        `⚠️ <code>${T.money(amount)}</code> summasiga mos kutilayotgan to'lov topilmadi ` +
+          `(muddati o'tgan yoki bunday so'rov yo'q).`,
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    const result = await confirmMatchedPayment(ctx.telegram, payload);
+    if (result.kind === 'direct_order' && result.error) {
+      return ctx.reply(
+        `✅ To'lov aniqlandi, lekin buyurtma avtomatik yaratilmadi (foydalanuvchiga balansga qo'shildi): ${escapeHtml(result.error)}`,
+        { parse_mode: 'HTML' }
+      );
+    }
+    if (result.kind === 'direct_order') {
+      return ctx.reply(`✅ To'lov aniqlandi va buyurtma #${result.order.id} avtomatik yaratildi.`);
+    }
+    return ctx.reply(`✅ To'lov aniqlandi va foydalanuvchi hisobi to'ldirildi. Yangi balans: ${T.money(result.balance)}`);
+  });
+
   // --- Foydalanuvchi haqida ma'lumot: /user <id> ---
   bot.command('user', async (ctx) => {
     if (!guard(ctx)) return;
@@ -204,6 +241,7 @@ function register(bot) {
         `/admin — panel\n` +
         `/user &lt;id&gt; — foydalanuvchi ma'lumoti\n` +
         `/qoshish &lt;id&gt; &lt;summa&gt; — balansni o'zgartirish\n` +
+        `/tolov &lt;summa&gt; — kartaga tushgan summani qo'lda tasdiqlash (unikal summa)\n` +
         `/hamkor &lt;id&gt; — hamkor maqomi\n` +
         `/javob &lt;id&gt; &lt;matn&gt; — murojaatga javob\n` +
         `/block &lt;id&gt; — bloklash/ochish`,

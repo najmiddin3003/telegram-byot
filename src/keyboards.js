@@ -43,9 +43,30 @@ function servicesKb(category) {
   return Markup.inlineKeyboard(rows);
 }
 
+/** Havola so'rash ekrani: "⏪ Orqaga" xizmatlar ro'yxatiga qaytaradi, "❌ Bekor qilish" buyurtmani to'xtatadi */
+function askLinkKb(service) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback(BTN.BACK, `cat:${service.categoryId}`),
+      Markup.button.callback(BTN.CANCEL, 'order:cancel'),
+    ],
+  ]);
+}
+
+/** Miqdor so'rash ekrani: "⏪ Orqaga" havola so'rashga qaytaradi */
+const askQtyKb = Markup.inlineKeyboard([
+  [
+    Markup.button.callback(BTN.BACK, 'order:back:link'),
+    Markup.button.callback(BTN.CANCEL, 'order:cancel'),
+  ],
+]);
+
 const confirmOrderKb = Markup.inlineKeyboard([
   [Markup.button.callback('✅ Tasdiqlash', 'order:confirm')],
-  [Markup.button.callback(BTN.CANCEL, 'order:cancel')],
+  [
+    Markup.button.callback(BTN.BACK, 'order:back:qty'),
+    Markup.button.callback(BTN.CANCEL, 'order:cancel'),
+  ],
 ]);
 
 /** 4-rasm: hisob ostidagi "💰 Hisob to'ldirish" tugmasi */
@@ -53,7 +74,29 @@ const topupInlineKb = Markup.inlineKeyboard([
   [Markup.button.callback(BTN.TOPUP, 'topup:start')],
 ]);
 
-const topupPaidKb = Markup.inlineKeyboard([[Markup.button.callback('❌ Bekor qilish', 'topup:cancel')]]);
+/** Summa so'rash ekrani (topup:amount) — faqat "Bekor qilish" (bu birinchi qadam) */
+const topupIntroKb = Markup.inlineKeyboard([[Markup.button.callback(BTN.CANCEL, 'topup:cancel')]]);
+
+/** To'lov rekvizitlari ekrani: "⏪ Orqaga" summani qayta kiritishga qaytaradi */
+const topupPaidKb = Markup.inlineKeyboard([
+  [
+    Markup.button.callback(BTN.BACK, 'topup:back:amount'),
+    Markup.button.callback(BTN.CANCEL, 'topup:cancel'),
+  ],
+]);
+
+/** Mablag' yetarli bo'lmaganda: hisobni to'ldirish YOKI shu buyurtma uchun to'g'ridan-to'g'ri to'lash */
+function notEnoughBalanceKb(draftToken) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(BTN.TOPUP, 'topup:start')],
+    [Markup.button.callback('⚡ To\'g\'ridan-to\'g\'ri to\'lov', `order:directpay:${draftToken}`)],
+    [Markup.button.callback(BTN.CANCEL, 'order:cancel')],
+  ]);
+}
+
+const directPayCancelKb = Markup.inlineKeyboard([
+  [Markup.button.callback('❌ Bekor qilish', 'topup:cancel')],
+]);
 
 /** 5-rasm: referal — "↗️ Ulashish" */
 function referralKb(link) {
@@ -108,12 +151,16 @@ const adminMenu = Markup.inlineKeyboard([
 module.exports = {
   mainMenu,
   cancelMenu,
-  cancelMenu,
   categoriesKb,
   servicesKb,
+  askLinkKb,
+  askQtyKb,
   confirmOrderKb,
   topupInlineKb,
+  topupIntroKb,
   topupPaidKb,
+  notEnoughBalanceKb,
+  directPayCancelKb,
   referralKb,
   apiKb,
   supportKb,

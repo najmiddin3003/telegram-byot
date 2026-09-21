@@ -25,8 +25,8 @@ async function placeOrder({ telegram, userId, serviceId, link, quantity, source 
   if (!service) throw new OrderError('service', 'Xizmat topilmadi');
 
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new OrderError('quantity', 'Miqdor faqat son bo\'lishi kerak');
+  if (!Number.isInteger(qty) || qty < service.min || qty > service.max) {
+    throw new OrderError('quantity', `Miqdor ${service.min} – ${service.max} oralig'ida bo'lishi kerak`);
   }
 
   if (!isValidLink(link)) throw new OrderError('link', "Havola noto'g'ri");

@@ -1,35 +1,40 @@
 'use strict';
 
-const { Markup } = require('telegraf');
 const db = require('../db');
 const T = require('../texts');
 const config = require('../config');
 const catalog = require('../catalog');
 const { placeOrder, OrderError } = require('../services/orderService');
+const paymentService = require('../services/paymentService');
 const { step } = require('../steps');
 const {
   mainMenu,
-  cancelMenu,
   categoriesKb,
   servicesKb,
+  askLinkKb,
+  askQtyKb,
   confirmOrderKb,
-  topupInlineKb,
+  notEnoughBalanceKb,
+  directPayCancelKb,
 } = require('../keyboards');
 const { isValidLink, escapeHtml } = require('../utils');
+const ui = require('../ui');
 
 function register(bot) {
-  // 2-rasm: ijtimoiy tarmoqlar ro'yxati
-  const showCategories = async (ctx, edit = false) => {
-    ctx.resetSession();
+  // 2-rasm: ijtimoiy tarmoqlar ro'yxati.
+  // fromCallback=false — reply-keyboard tugmasidan (yangi xabar, eskisi o'chiriladi).
+  // fromCallback=true  — inline tugmadan (xuddi shu xabar tahrirlanadi).
+  const showCategories = async (ctx, fromCallback = false) => {
     const opts = { parse_mode: 'HTML', ...categoriesKb(catalog.categories) };
-    if (edit) {
-      await ctx.editMessageText(T.chooseCategory, opts).catch(() => ctx.reply(T.chooseCategory, opts));
+    if (fromCallback) {
+      ctx.resetSession();
+      await ui.edit(ctx, T.chooseCategory, opts);
     } else {
-      await ctx.reply(T.chooseCategory, opts);
+      await ui.resetAndSend(ctx, T.chooseCategory, opts);
     }
   };
 
-  bot.hears(T.BTN.ORDER, (ctx) => showCategories(ctx));
+  bot.hears(T.BTN.ORDER, (ctx) => showCategories(ctx, false));
   bot.action('order', async (ctx) => {
     await ctx.answerCbQuery();
     await showCategories(ctx, true);
@@ -42,8 +47,7 @@ function register(bot) {
     if (service?.categoryId) {
       const category = catalog.getCategory(service.categoryId);
       if (category) {
-        const opts = { parse_mode: 'HTML', ...servicesKb(category) };
-        await ctx.editMessageText(T.chooseService(category), opts).catch(() => ctx.reply(T.chooseService(category), opts));
+        await ui.edit(ctx, T.chooseService(category), { parse_mode: 'HTML', ...servicesKb(category) });
         return;
       }
     }
@@ -57,13 +61,12 @@ function register(bot) {
     const cat = catalog.getCategory(ctx.match[1]);
     if (!cat) return ctx.reply(T.error);
 
-    const opts = { parse_mode: 'HTML', ...servicesKb(cat) };
-    await ctx
-      .editMessageText(T.chooseService(cat), opts)
-      .catch(() => ctx.reply(T.chooseService(cat), opts));
+    // Havola ekranidan "Orqaga" qaytilganda boshlangan buyurtma bekor bo'ladi
+    ctx.resetSession();
+    await ui.edit(ctx, T.chooseService(cat), { parse_mode: 'HTML', ...servicesKb(cat) });
   });
 
-  // Xizmat tanlandi → havola so'raladi
+  // Xizmat tanlandi → havola so'raladi (bitta xabar ichida — yangi xabar qo'shilmaydi)
   bot.action(/^srv:(.+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const service = catalog.getService(ctx.match[1]);
@@ -73,66 +76,52 @@ function register(bot) {
     if (service.free) {
       const used = await db.countFreeOrdersToday(ctx.from.id);
       if (used >= config.freeDailyLimit) {
-        return ctx.reply(T.freeLimitReached(config.freeDailyLimit), { parse_mode: 'HTML', ...mainMenu });
+        return ui.resetAndSend(ctx, T.freeLimitReached(config.freeDailyLimit), {
+          parse_mode: 'HTML',
+          ...mainMenu,
+        });
       }
     }
 
     ctx.session.step = 'order:link';
     ctx.session.order = { serviceId: service.id };
 
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
-
-    const askLinkKb = Markup.inlineKeyboard([
-      [Markup.button.callback(T.BTN.BACK, 'order:back'), Markup.button.callback(T.BTN.CANCEL, 'order:cancel')],
-    ]);
-
-    await ctx.reply(T.askLink(service), {
+    await ui.edit(ctx, T.askLink(service), {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
-      reply_markup: askLinkKb,
+      ...askLinkKb(service),
     });
   });
 
-  bot.action('order:back', async (ctx) => {
-    await ctx.answerCbQuery();
-    const service = catalog.getService(ctx.session.order?.serviceId);
-    if (!service) {
-      ctx.resetSession();
-      return ctx.reply(T.error, mainMenu);
+  // Havolani qabul qilish (matn) → miqdor so'raladi.
+  // Eski so'rov xabari VA foydalanuvchi yuborgan havola xabari o'chiriladi.
+  step('order:link', async (ctx, text) => {
+    if (!isValidLink(text)) {
+      await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
+      return ctx.reply(T.badLink);
     }
 
-    const cat = catalog.getCategory(service.categoryId);
-    if (!cat) return ctx.reply(T.error, mainMenu);
-
-    const opts = { parse_mode: 'HTML', ...servicesKb(cat) };
-    await ctx.editMessageText(T.chooseService(cat), opts).catch(() => ctx.reply(T.chooseService(cat), opts));
-  });
-
-  // Havolani qabul qilish
-  step('order:link', async (ctx, text) => {
-    if (!isValidLink(text)) return ctx.reply(T.badLink);
-
     const service = catalog.getService(ctx.session.order?.serviceId);
     if (!service) {
-      ctx.resetSession();
-      return ctx.reply(T.error, mainMenu);
+      return ui.resetAndSend(ctx, T.error, mainMenu);
     }
 
     ctx.session.order.link = text.trim();
     ctx.session.step = 'order:qty';
-    await ctx.reply(T.askQuantity(service), { parse_mode: 'HTML', ...cancelMenu });
+
+    await ui.sendClean(ctx, T.askQuantity(service), { parse_mode: 'HTML', ...askQtyKb });
   });
 
   // Miqdorni qabul qilish → tasdiqlash ekrani
   step('order:qty', async (ctx, text) => {
     const service = catalog.getService(ctx.session.order?.serviceId);
     if (!service) {
-      ctx.resetSession();
-      return ctx.reply(T.error, mainMenu);
+      return ui.resetAndSend(ctx, T.error, mainMenu);
     }
 
     const qty = Number(String(text).replace(/[\s,]/g, ''));
-    if (!Number.isInteger(qty) || qty <= 0) {
+    if (!Number.isInteger(qty) || qty < service.min || qty > service.max) {
+      await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
       return ctx.reply(T.badQuantity(service), { parse_mode: 'HTML' });
     }
 
@@ -143,7 +132,8 @@ function register(bot) {
     ctx.session.order.price = price;
     ctx.session.step = 'order:confirm';
 
-    await ctx.reply(
+    await ui.sendClean(
+      ctx,
       T.confirmOrder({
         serviceName: `${service.categoryTitle} — ${service.name}`,
         link: escapeHtml(ctx.session.order.link),
@@ -160,11 +150,8 @@ function register(bot) {
     await ctx.answerCbQuery();
     const draft = ctx.session.order;
     if (!draft?.serviceId || !draft?.link || !draft?.quantity) {
-      ctx.resetSession();
-      return ctx.reply(T.error, mainMenu);
+      return ui.resetAndSend(ctx, T.error, mainMenu);
     }
-
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
 
     try {
       const { order } = await placeOrder({
@@ -176,32 +163,99 @@ function register(bot) {
         source: 'bot',
       });
 
-      ctx.resetSession();
-      await ctx.reply(T.orderCreated(order), {
+      await ui.resetAndSend(ctx, T.orderCreated(order), {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
         ...mainMenu,
       });
     } catch (e) {
-      ctx.resetSession();
-
       if (e instanceof OrderError && e.code === 'balance') {
-        return ctx.reply(T.notEnoughBalance(e.need, e.have), { parse_mode: 'HTML', ...topupInlineKb });
+        const token = await paymentService.stashDraft({
+          serviceId: draft.serviceId,
+          link: draft.link,
+          quantity: draft.quantity,
+          price: e.need,
+        });
+        ctx.resetSession();
+        await ui.edit(ctx, T.notEnoughBalance(e.need, e.have), {
+          parse_mode: 'HTML',
+          ...notEnoughBalanceKb(token),
+        });
+        return;
       }
       if (e instanceof OrderError && e.code === 'free_limit') {
-        return ctx.reply(T.freeLimitReached(config.freeDailyLimit), { parse_mode: 'HTML', ...mainMenu });
+        await ui.resetAndSend(ctx, T.freeLimitReached(config.freeDailyLimit), {
+          parse_mode: 'HTML',
+          ...mainMenu,
+        });
+        return;
       }
 
       console.error('[order] xatolik:', e);
-      await ctx.reply(T.error, mainMenu);
+      await ui.resetAndSend(ctx, T.error, mainMenu);
     }
   });
 
   bot.action('order:cancel', async (ctx) => {
     await ctx.answerCbQuery();
+    await ui.resetAndSend(ctx, T.cancelled, mainMenu);
+  });
+
+  // "⏪ Orqaga": miqdor so'rashdan → havola so'rashga
+  bot.action('order:back:link', async (ctx) => {
+    await ctx.answerCbQuery();
+    const service = catalog.getService(ctx.session.order?.serviceId);
+    if (!service) return ui.resetAndSend(ctx, T.error, mainMenu);
+
+    ctx.session.step = 'order:link';
+    delete ctx.session.order.link;
+
+    await ui.edit(ctx, T.askLink(service), {
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+      ...askLinkKb(service),
+    });
+  });
+
+  // "⏪ Orqaga": tasdiqlashdan → miqdor so'rashga
+  bot.action('order:back:qty', async (ctx) => {
+    await ctx.answerCbQuery();
+    const service = catalog.getService(ctx.session.order?.serviceId);
+    if (!service) return ui.resetAndSend(ctx, T.error, mainMenu);
+
+    ctx.session.step = 'order:qty';
+    delete ctx.session.order.quantity;
+    delete ctx.session.order.price;
+
+    await ui.edit(ctx, T.askQuantity(service), { parse_mode: 'HTML', ...askQtyKb });
+  });
+
+  // Balans yetarli bo'lmaganda: shu buyurtma uchun to'g'ridan-to'g'ri to'lov
+  bot.action(/^order:directpay:(.+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const token = ctx.match[1];
+    const draft = await paymentService.popDraft(token);
+
+    if (!draft) {
+      return ui.resetAndSend(ctx, T.directPayDraftExpired, mainMenu);
+    }
+
+    const { uniqueAmount, ttlSec } = await paymentService.createPending({
+      userId: ctx.from.id,
+      baseAmount: draft.price,
+      kind: 'direct_order',
+      meta: {
+        serviceId: draft.serviceId,
+        link: draft.link,
+        quantity: draft.quantity,
+      },
+    });
+
     ctx.resetSession();
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
-    await ctx.reply(T.cancelled, mainMenu);
+    await ui.edit(ctx, T.directPayIntro(uniqueAmount, Math.round(ttlSec / 60)), {
+      parse_mode: 'HTML',
+      ...directPayCancelKb,
+    });
   });
 }
 

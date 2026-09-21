@@ -7,6 +7,8 @@ const T = require('./texts');
 const { sessionMiddleware } = require('./session');
 const { getStep } = require('./steps');
 const { mainMenu } = require('./keyboards');
+const ui = require('./ui');
+const paymentService = require('./services/paymentService');
 
 const handlers = [
   require('./handlers/start'),
@@ -22,8 +24,7 @@ const handlers = [
 ];
 
 /** Foydalanuvchini bazadan yuklab, ctx.state.user ga qo'yadi */
-async function attachUser(ctx, next) {
-  if (!ctx.from || ctx.from.is_bot) return next();
+async function attachUser(ctx, next) {  if (!ctx.from || ctx.from.is_bot) return next();
 
   const text = ctx.message?.text;
   const isStart = typeof text === 'string' && text.startsWith('/start');
@@ -49,6 +50,14 @@ async function attachUser(ctx, next) {
   return next();
 }
 
+/** Foydalanuvchi "Bekor qilish"/"Orqaga" bossa, band qilingan unikal summani ham bo'shatamiz */
+async function cancelPendingIfAny(ctx) {
+  const amount = ctx.session?.topupUniqueAmount;
+  if (amount) {
+    await paymentService.cancelPending(amount).catch(() => {});
+  }
+}
+
 function createBot() {
   if (!config.botToken) {
     throw new Error('BOT_TOKEN topilmadi! .env faylini to\'ldiring.');
@@ -61,12 +70,12 @@ function createBot() {
 
   // "Bekor qilish" tugmasi — har qanday qadamdan chiqadi
   bot.hears(T.BTN.CANCEL, async (ctx) => {
-    ctx.resetSession();
-    await ctx.reply(T.cancelled, mainMenu);
+    await cancelPendingIfAny(ctx);
+    await ui.resetAndSend(ctx, T.cancelled, mainMenu);
   });
   bot.hears(T.BTN.BACK, async (ctx) => {
-    ctx.resetSession();
-    await ctx.reply(T.menu, mainMenu);
+    await cancelPendingIfAny(ctx);
+    await ui.resetAndSend(ctx, T.menu, mainMenu);
   });
 
   for (const h of handlers) h.register(bot);

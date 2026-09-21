@@ -1,0 +1,37 @@
+version: "3.8"
+
+# Lokal ishlab chiqish uchun: faqat Redis'ni Docker'da ko'tarib,
+# botni (npm start / npm run dev) o'zingiz alohida ishga tushirasiz.
+# Agar botning o'zini ham konteynerda ishlatmoqchi bo'lsangiz,
+# quyidagi "bot" xizmatini izohdan chiqaring (Dockerfile mavjud).
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: teleygram-bot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # bot:
+  #   build: .
+  #   container_name: teleygram-bot
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   environment:
+  #     REDIS_URL: redis://redis:6379
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  redis-data:

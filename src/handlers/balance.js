@@ -4,36 +4,56 @@ const db = require('../db');
 const T = require('../texts');
 const config = require('../config');
 const { step } = require('../steps');
-const { mainMenu, cancelMenu, topupPaidKb, paymentModerationKb } = require('../keyboards');
+const { mainMenu, topupIntroKb, topupPaidKb, paymentModerationKb } = require('../keyboards');
 const { userLabel, notifyAdminsPhoto } = require('../utils');
+const paymentService = require('../services/paymentService');
+const ui = require('../ui');
 
 function register(bot) {
-  // 1-qadam: summani so'rash
-  const startTopup = async (ctx) => {
-    ctx.resetSession();
-    ctx.session.step = 'topup:amount';
-    await ctx.reply(T.topupIntro, { parse_mode: 'HTML', ...cancelMenu });
+  // 1-qadam: summani so'rash.
+  // fromCallback=false — reply-keyboard tugmasidan (eski xabar o'chirilib, yangisi yuboriladi).
+  // fromCallback=true  — inline tugmadan (xuddi shu xabar tahrirlanadi).
+  const startTopup = async (ctx, fromCallback = false) => {
+    const opts = { parse_mode: 'HTML', ...topupIntroKb };
+    if (fromCallback) {
+      ctx.resetSession();
+      ctx.session.step = 'topup:amount';
+      await ui.edit(ctx, T.topupIntro, opts);
+    } else {
+      await ui.resetAndSend(ctx, T.topupIntro, opts);
+      ctx.session.step = 'topup:amount'; // resetAndSend ichida resetSession chaqirilgani uchun qayta qo'yamiz
+    }
   };
 
-  bot.hears(T.BTN.TOPUP, startTopup);
+  bot.hears(T.BTN.TOPUP, (ctx) => startTopup(ctx, false));
 
   // 4-rasmdagi "💰 Hisob to'ldirish" inline tugmasi
   bot.action('topup:start', async (ctx) => {
     await ctx.answerCbQuery();
-    await startTopup(ctx);
+    await startTopup(ctx, true);
   });
 
-  // 2-qadam: summani qabul qilish → rekvizitlarni ko'rsatish
+  // 2-qadam: summani qabul qilish → unikal summa yaratish → rekvizitlarni ko'rsatish
   step('topup:amount', async (ctx, text) => {
     const amount = Number(String(text).replace(/[\s,]/g, ''));
     if (!Number.isFinite(amount) || amount < config.minTopup) {
+      await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
       return ctx.reply(T.badAmount);
     }
 
-    ctx.session.topupAmount = Math.round(amount);
+    const base = Math.round(amount);
+    const { uniqueAmount, ttlSec } = await paymentService.createPending({
+      userId: ctx.from.id,
+      baseAmount: base,
+      kind: 'topup',
+    });
+
+    // Chek rasmi yuborilsa ham base summani (unikal emas) hisobga qo'shamiz
+    ctx.session.topupAmount = base;
+    ctx.session.topupUniqueAmount = uniqueAmount;
     ctx.session.step = 'topup:receipt';
 
-    await ctx.reply(T.topupInstructions(ctx.session.topupAmount), {
+    await ui.sendClean(ctx, T.topupInstructions(uniqueAmount, Math.round(ttlSec / 60)), {
       parse_mode: 'HTML',
       ...topupPaidKb,
     });
@@ -41,7 +61,21 @@ function register(bot) {
 
   // Chek kutilayotganda matn kelsa
   step('topup:receipt', async (ctx) => {
+    await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
     await ctx.reply(T.needReceipt, { parse_mode: 'HTML' });
+  });
+
+  // "⏪ Orqaga": rekvizit ekranidan → summani qayta kiritishga
+  bot.action('topup:back:amount', async (ctx) => {
+    await ctx.answerCbQuery();
+    if (ctx.session.topupUniqueAmount) {
+      await paymentService.cancelPending(ctx.session.topupUniqueAmount).catch(() => {});
+    }
+    ctx.session.step = 'topup:amount';
+    delete ctx.session.topupAmount;
+    delete ctx.session.topupUniqueAmount;
+
+    await ui.edit(ctx, T.topupIntro, { parse_mode: 'HTML', ...topupIntroKb });
   });
 
   // 3-qadam: chek rasmini qabul qilish
@@ -50,8 +84,7 @@ function register(bot) {
 
     const amount = Number(ctx.session.topupAmount);
     if (!amount) {
-      ctx.resetSession();
-      return ctx.reply(T.error, mainMenu);
+      return ui.resetAndSend(ctx, T.error, mainMenu);
     }
 
     const photos = ctx.message.photo;
@@ -64,10 +97,8 @@ function register(bot) {
       status: 'pending',
     });
 
-    ctx.resetSession();
-    await ctx.reply(T.receiptSent(payment.id), { parse_mode: 'HTML', ...mainMenu });
-
     const user = await db.getUser(ctx.from.id);
+    // Rasmni o'chirishdan oldin admin kanaliga forward qilamiz (file_id saqlanib qoladi)
     await notifyAdminsPhoto(
       ctx.telegram,
       fileId,
@@ -77,13 +108,16 @@ function register(bot) {
         `💰 Joriy balans: ${T.money(user.balance)}`,
       paymentModerationKb(payment.id)
     );
+
+    await ui.resetAndSend(ctx, T.receiptSent(payment.id), { parse_mode: 'HTML', ...mainMenu });
   });
 
   bot.action('topup:cancel', async (ctx) => {
     await ctx.answerCbQuery();
-    ctx.resetSession();
-    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
-    await ctx.reply(T.cancelled, mainMenu);
+    if (ctx.session.topupUniqueAmount) {
+      await paymentService.cancelPending(ctx.session.topupUniqueAmount).catch(() => {});
+    }
+    await ui.resetAndSend(ctx, T.cancelled, mainMenu);
   });
 
   // --- Admin: to'lovni tasdiqlash / rad etish ---

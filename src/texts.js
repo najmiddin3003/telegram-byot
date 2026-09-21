@@ -65,8 +65,8 @@ const T = {
     `Eng kam: <b>${num(service.min)}</b> ta\n` +
     `Eng ko'p: <b>${num(service.max)}</b> ta`,
 
-  badQuantity: () =>
-    `⚠️ Miqdor faqat son bo'lishi va musbat butun son bo'lishi kerak.`,
+  badQuantity: (service) =>
+    `⚠️ Miqdor faqat son bo'lishi va ${num(service.min)} – ${num(service.max)} oralig'ida bo'lishi kerak.`,
 
   confirmOrder: (o) =>
     `🧾 <b>Buyurtmani tasdiqlang</b>\n\n` +
@@ -80,7 +80,7 @@ const T = {
     `❌ Hisobingizda mablag' yetarli emas.\n\n` +
     `Kerak: <b>${money(need)}</b>\n` +
     `Bor: <b>${money(have)}</b>\n\n` +
-    `Quyidagi tugma orqali hisobingizni to'ldiring 👇`,
+    `Hisobingizni to'ldiring yoki shu buyurtma uchun to'g'ridan-to'g'ri to'lov qiling 👇`,
 
   freeLimitReached: (limit) =>
     `⏳ Bepul xizmat limiti tugadi.\n\n` +
@@ -108,23 +108,30 @@ const T = {
 
   badAmount: `⚠️ Summa noto'g'ri. Eng kam summa: ${money(config.minTopup)}`,
 
-  topupInstructions: (amount) =>
+  topupInstructions: (uniqueAmount, ttlMin) =>
     `💳 <b>To'lov ma'lumotlari</b>\n\n` +
-    `💵 Summa: <b>${money(amount)}</b>\n\n` +
+    `⚠️ Aynan mana shu summani o'tkazing (oxiridagi raqamlar ham muhim — bu sizning shaxsiy to'lov kodingiz):\n` +
+    `💵 <b>${money(uniqueAmount)}</b>\n\n` +
     `💳 Karta raqami:\n<code>${config.cardNumber}</code>\n` +
     `👤 Karta egasi: <b>${config.cardHolder}</b>\n\n` +
-    `⚠️ To'lovni amalga oshirgach, <b>chek rasmini (skrinshot)</b> shu yerga yuboring.\n` +
-    `Admin tasdiqlagach, mablag' hisobingizga qo'shiladi.`,
+    `⏳ Bu summa <b>${ttlMin} daqiqa</b> davomida siz uchun band qilib qo'yildi.\n` +
+    `✅ To'lov tushishi bilan hisobingiz <b>avtomatik</b> to'ldiriladi.\n` +
+    `📸 Ehtiyot chorasi sifatida chek rasmini ham shu yerga yuborishingiz mumkin — u holda admin qo'lda ham tekshiradi.`,
 
   needReceipt: "📸 Iltimos, to'lov chekining <b>rasmini</b> yuboring.",
 
   receiptSent: (id) =>
     `✅ Chek qabul qilindi!\n\n` +
     `🆔 So'rov raqami: <code>#${id}</code>\n` +
-    `Admin tekshirgach, xabar beramiz. Odatda bu 5–30 daqiqa vaqt oladi.`,
+    `To'lov avtomatik aniqlansa — darhol, aniqlanmasa admin tekshirgach xabar beramiz (5–30 daqiqa).`,
 
   topupApproved: (amount, balance) =>
     `✅ <b>Hisobingiz to'ldirildi!</b>\n\n` +
+    `➕ Qo'shildi: <b>${money(amount)}</b>\n` +
+    `💰 Joriy balans: <b>${money(balance)}</b>`,
+
+  topupApprovedAuto: (amount, balance) =>
+    `✅ <b>To'lovingiz avtomatik aniqlandi va hisobingiz to'ldirildi!</b>\n\n` +
     `➕ Qo'shildi: <b>${money(amount)}</b>\n` +
     `💰 Joriy balans: <b>${money(balance)}</b>`,
 
@@ -132,6 +139,30 @@ const T = {
     `❌ To'lov so'rovingiz rad etildi.\n\n` +
     `💵 Summa: ${money(amount)}\n` +
     `Savollar bo'lsa: @${config.supportUsername}`,
+
+  // --- To'g'ridan-to'g'ri to'lov (balanssiz, faqat shu buyurtma uchun) ---
+  directPayIntro: (uniqueAmount, ttlMin) =>
+    `⚡ <b>To'g'ridan-to'g'ri to'lov</b>\n\n` +
+    `Bu buyurtma faqat shu to'lov orqali, hisobingizdagi balansga tegmasdan amalga oshiriladi.\n\n` +
+    `⚠️ Aynan mana shu summani o'tkazing:\n` +
+    `💵 <b>${money(uniqueAmount)}</b>\n\n` +
+    `💳 Karta raqami:\n<code>${config.cardNumber}</code>\n` +
+    `👤 Karta egasi: <b>${config.cardHolder}</b>\n\n` +
+    `⏳ ${ttlMin} daqiqa ichida to'lang — to'lov tushishi bilan buyurtmangiz avtomatik yaratiladi.`,
+
+  directPayDraftExpired:
+    "⌛ Bu to'lov havolasining muddati tugagan. Iltimos, buyurtmani qaytadan boshlang.",
+
+  directPayOrderCreated: (order) =>
+    `✅ <b>To'lovingiz qabul qilindi, buyurtma yaratildi!</b>\n\n` +
+    `🆔 Buyurtma: <code>#${order.id}</code>\n` +
+    `💵 To'landi: <b>${money(order.price)}</b>\n\n` +
+    `Holatini "${BTN.ORDERS}" bo'limidan kuzatib boring.`,
+
+  directPayOrderFailed: (amount) =>
+    `⚠️ To'lovingiz qabul qilindi va <b>${money(amount)}</b> hisobingizga qo'shildi, ` +
+    `lekin buyurtmani avtomatik yaratishda xatolik yuz berdi. Iltimos, "${BTN.ORDER}" orqali ` +
+    `qaytadan buyurtma bering — mablag' balansingizda turibdi.`,
 
   // --- Mening hisobim (4-rasm) ---
   account: (u, stats) =>

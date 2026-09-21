@@ -59,6 +59,19 @@ const config = {
   // Bo'sh bo'lsa PUBLIC_URL asosida avtomatik yasaladi
   apiBaseUrl: (process.env.API_BASE_URL || '').replace(/\/+$/, ''),
   apiDocsUrl: process.env.API_DOCS_URL || '',
+
+  // --- Redis (unikal summa orqali avtomatik to'lovni aniqlash) ---
+  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+
+  // To'lov webhook manzilini himoyalash uchun maxfiy token.
+  // POST /webhook/payment?token=<shu qiymat> yoki X-Webhook-Secret header orqali tekshiriladi.
+  paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || 'payment-webhook-secret',
+
+  // Unikal summa nechi daqiqa "band" turishi (standart: 15 daqiqa)
+  uniqueAmountTtlSec: toNumber(process.env.UNIQUE_AMOUNT_TTL_SEC, 15 * 60),
+
+  // Asosiy summaga qo'shiladigan tasodifiy 2 xonali suffiks (1-99)
+  uniqueAmountSuffixMax: toNumber(process.env.UNIQUE_AMOUNT_SUFFIX_MAX, 99),
 };
 
 config.isAdmin = (id) => config.adminIds.includes(Number(id));
