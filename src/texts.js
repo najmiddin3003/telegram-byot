@@ -42,6 +42,11 @@ const T = {
     `Quyidagi menyudan kerakli bo'limni tanlang 👇`,
 
   menu: "📋 Asosiy menyu. Kerakli bo'limni tanlang:",
+
+  forceSubscribe:
+    `📢 <b>Botdan foydalanish uchun avval kanalimizga obuna bo'ling!</b>\n\n` +
+    `Obuna bo'lgach, pastdagi "✅ Obuna bo'ldim" tugmasini bosing.`,
+  forceSubStillNot: "❌ Siz hali kanalga obuna bo'lmagansiz. Avval obuna bo'ling!",
   cancelled: '❌ Amal bekor qilindi.',
   unknown: '🤷‍♂️ Tushunmadim. Iltimos, menyudagi tugmalardan foydalaning.',
   error: "⚠️ Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.",
@@ -86,6 +91,10 @@ const T = {
     `⏳ Bepul xizmat limiti tugadi.\n\n` +
     `Kuniga <b>${limit}</b> marta bepul buyurtma berish mumkin.\n` +
     `Ertaga qayta urinib ko'ring yoki pullik xizmatlardan foydalaning.`,
+
+  freeTemporarilyUnavailable:
+    `⏳ <b>Bepul xizmatlar vaqtincha ishlamayapti.</b>\n\n` +
+    `Iltimos, keyinroq qayta urinib ko'ring yoki quyidagi tugma orqali admin bilan bog'laning.`,
 
   orderCreated: (o) =>
     `✅ <b>Buyurtma qabul qilindi!</b>\n\n` +

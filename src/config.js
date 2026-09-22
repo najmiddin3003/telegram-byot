@@ -50,6 +50,11 @@ const config = {
   supportUsername: (process.env.SUPPORT_USERNAME || 'admin').replace(/^@/, ''),
   channelUrl: process.env.CHANNEL_URL || '',
 
+  // Majburiy obuna: bo'sh bo'lsa tekshiruv o'chirilgan.
+  // @kanal_username, -100xxxxxxxxxx (chat id) yoki https://t.me/kanal_username shaklida bo'lishi mumkin.
+  // Bot shu kanalda ADMIN bo'lishi shart, aks holda a'zolikni tekshira olmaydi.
+  requiredChannel: process.env.REQUIRED_CHANNEL || process.env.CHANNEL_URL || '',
+
   // --- SMM provayder (ixtiyoriy) ---
   // Standart "SMM Panel API v2": POST {url} key=...&action=add&service=...&link=...&quantity=...
   smmApiUrl: process.env.SMM_API_URL || '',
@@ -75,6 +80,25 @@ const config = {
 };
 
 config.isAdmin = (id) => config.adminIds.includes(Number(id));
+
+/**
+ * `getChatMember` uchun kanal manzilini normallashtiradi:
+ * https://t.me/nomi -> @nomi, @nomi -> @nomi, -100... -> o'zgarishsiz.
+ * Https://t.me/+... yoki /joinchat/... (yopiq taklif havolasi) orqali a'zolikni
+ * tekshirib bo'lmaydi — bunday holda REQUIRED_CHANNEL ga kanalning chat_id
+ * (-100 bilan boshlanuvchi) qiymatini qo'ying.
+ */
+function normalizeChannelRef(value) {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  const m = v.match(/t\.me\/([A-Za-z0-9_]+)\/?$/i);
+  if (m) return `@${m[1]}`;
+  if (/^@/.test(v)) return v;
+  if (/^-?\d+$/.test(v)) return v;
+  return '';
+}
+
+config.requiredChannelChatId = normalizeChannelRef(config.requiredChannel);
 
 /** Hamkorlar uchun API manzili: https://domen/BotNomi/api/v2 */
 config.apiUrl = () => {

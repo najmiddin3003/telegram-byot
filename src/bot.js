@@ -28,9 +28,12 @@ async function attachUser(ctx, next) {  if (!ctx.from || ctx.from.is_bot) return
 
   const text = ctx.message?.text;
   const isStart = typeof text === 'string' && text.startsWith('/start');
+  // "✅ Obuna bo'ldim" tugmasi ham /start bilan bir xil — bu yerda oldindan
+  // (ref_by'siz) yaratib qo'yilsa, majburiy obunadan keyingi yangi-foydalanuvchi/referal mantiqi buziladi
+  const isCheckSub = ctx.updateType === 'callback_query' && ctx.callbackQuery?.data === 'checksub';
 
   let user = await db.getUser(ctx.from.id);
-  if (!user && !isStart) {
+  if (!user && !isStart && !isCheckSub) {
     // /start bosmasdan kirib qolganlar uchun
     user = await db.upsertUser({
       id: ctx.from.id,

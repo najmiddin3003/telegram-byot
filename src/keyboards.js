@@ -117,6 +117,14 @@ function apiKb(hasKey) {
   ]);
 }
 
+/** Majburiy obuna ekrani: kanalga o'tish + "Obuna bo'ldim" tekshiruv tugmasi */
+function forceSubKb() {
+  const rows = [];
+  if (config.channelUrl) rows.push([Markup.button.url("📢 Kanalga obuna bo'lish", config.channelUrl)]);
+  rows.push([Markup.button.callback("✅ Obuna bo'ldim", 'checksub')]);
+  return Markup.inlineKeyboard(rows);
+}
+
 function supportKb() {
   const rows = [[Markup.button.url('💬 Adminga yozish', `https://t.me/${config.supportUsername}`)]];
   if (config.channelUrl) rows.push([Markup.button.url('📢 Kanalimiz', config.channelUrl)]);
@@ -161,6 +169,7 @@ module.exports = {
   topupPaidKb,
   notEnoughBalanceKb,
   directPayCancelKb,
+  forceSubKb,
   referralKb,
   apiKb,
   supportKb,

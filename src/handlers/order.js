@@ -16,6 +16,7 @@ const {
   confirmOrderKb,
   notEnoughBalanceKb,
   directPayCancelKb,
+  supportKb,
 } = require('../keyboards');
 const { isValidLink, escapeHtml } = require('../utils');
 const ui = require('../ui');
@@ -60,6 +61,20 @@ function register(bot) {
     await ctx.answerCbQuery();
     const cat = catalog.getCategory(ctx.match[1]);
     if (!cat) return ctx.reply(T.error);
+
+    if (cat.id === 'free') {
+      const freeKb = {
+        ...supportKb(),
+        inline_keyboard: [
+          [
+            { text: T.BTN.BACK, callback_data: 'order' },
+            ...supportKb().inline_keyboard[0],
+          ],
+        ],
+      };
+      ctx.resetSession();
+      return ui.edit(ctx, T.freeTemporarilyUnavailable, { parse_mode: 'HTML', ...freeKb });
+    }
 
     // Havola ekranidan "Orqaga" qaytilganda boshlangan buyurtma bekor bo'ladi
     ctx.resetSession();
